@@ -1,6 +1,14 @@
+// Enumeration representing different environment modes: Development and Production
+export enum Env {
+    Dev, // Development environment
+    Prod // Production environment
+}
+
+// Base URL for API endpoints
 export const API_BASE_URL: string = "https://api.example.com";
+
+// Maximum number of retries for API requests
 export const MAX_RETRIES: number = 3;
-// Add more constants as needed
 // DatabaseHost - the hostname of the RethinkDB server
 export const DatabaseHost = '192.168.50.101';
 // DatabasePort - the port number of the RethinkDB server

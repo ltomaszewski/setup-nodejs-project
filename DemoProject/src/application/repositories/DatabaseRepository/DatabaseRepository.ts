@@ -9,13 +9,10 @@ export class DatabaseRepository {
     readonly port: number;
     // conn - the RethinkDB connection object (null until connected)
     private conn: r.Connection | null;
-    // databaseName - database name
-    readonly databaseName: string
     // forceDrop - Property to recreate database on every connection
     forceDrop: boolean
 
-    constructor(databaseName: string, host: string, port: number, forceDrop: boolean = false) {
-        this.databaseName = databaseName
+    constructor(host: string, port: number, forceDrop: boolean = false) {
         this.host = host;
         this.port = port;
         this.forceDrop = forceDrop
@@ -23,9 +20,9 @@ export class DatabaseRepository {
     }
 
     // connect - establishes a connection to the RethinkDB server
-    async connect() {
+    async connect(databaseName: string) {
         this.conn = await r.connect({ host: this.host, port: this.port })
-        const schema = new Schema(this.databaseName, this)
+        const schema = new Schema(databaseName, this)
         await schema.updateSchemaIfNeeded(this.forceDrop)
     }
 
@@ -135,7 +132,7 @@ export class DatabaseRepository {
     }
 
     // delete - delete an object in a table
-    async delete(databaseName: string, tableName: string, filter: r.ExpressionFunction<boolean>) {
+    async delete(databaseName: string, tableName: string, filter: any) {
         if (this.conn === null) {
             throw new Error('Connection is null');
         }
@@ -178,3 +175,4 @@ export class DatabaseRepository {
         }
     }
 }
+

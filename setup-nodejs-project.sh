@@ -67,33 +67,86 @@ EOL
 # Create the directory structure (same as before)
 echo "Creating directory structure..."
 mkdir -p .vscode
+mkdir -p src/application/entities
 mkdir -p src/application/dtos
 mkdir -p src/application/helpers
 mkdir -p src/application/interfaces
 mkdir -p src/application/services
+mkdir -p src/application/repositories
 mkdir -p src/config
-mkdir -p src/domain/entities
 mkdir -p src/error-handling
-mkdir -p src/infrastructure/repositories
 mkdir -p src/interfaces/controllers
 mkdir -p src/interfaces/middlewares
 mkdir -p src/interfaces/routes
 
-echo "Creating index.ts file..."
-cat <<EOL > src/index.ts
-console.log("Hello, World!");
-EOL
-
 # Create Constants.ts file
 echo "Creating Constants.ts file..."
-cat <<EOL > src/application/Constants.ts
+cat <<EOL > src/config/Constants.ts
+// Enumeration representing different environment modes: Development and Production
+export enum Env {
+    Dev, // Development environment
+    Prod // Production environment
+}
+
+// Base URL for API endpoints
 export const API_BASE_URL: string = "https://api.example.com";
+
+// Maximum number of retries for API requests
 export const MAX_RETRIES: number = 3;
-// Add more constants as needed
+EOL
+
+# Create CLIConfiguration.ts file
+echo "Creating CLIConfiguration.ts file..."
+cat <<EOL > src/config/CLIConfiguration.ts
+// Importing the Env enum from the Constants module
+import { Env } from "./Constants";
+
+// Class representing CLI configuration
+export class CLIConfiguration {
+    readonly arg1: string; // Command line argument 1
+    readonly env: Env; // Environment mode (Development or Production)
+
+    // Private constructor to create an instance of CLIConfiguration
+    private constructor(arg1: string, env: Env) {
+        this.arg1 = arg1;
+        this.env = env;
+    }
+
+    // Static method to create CLIConfiguration instance from command line arguments
+    static fromCommandLineArguments(argv: string[]): CLIConfiguration {
+        // Extracting value of arg1 from command line arguments
+        const args = argv.find(arg => arg.startsWith('--arg1='))?.split('=')[1];
+        
+        // Checking if production mode flag is present in command line arguments
+        const producationMode = argv.find(arg => arg.includes('--runmode=producation'));
+
+        if (args) {
+            // Determining the environment based on the presence of production mode flag
+            const env = producationMode !== undefined ? Env.Prod : Env.Dev;
+            // Creating and returning a new CLIConfiguration instance
+            return new CLIConfiguration(args, env);
+        } else {
+            // Throwing an error if arg1 is not provided in the command line arguments
+            throw new Error("Fatal error: Configuration argument not provided.");
+        }
+    }
+
+    // Getter method to compute the database name based on the environment
+    get databaseName(): string {
+        if (this.env === Env.Dev) {
+            // If in development environment, return the dev_sampleDB name
+            return "dev_sampleDB".replace(".", "_");
+        } else {
+            // If in production environment, return the sampleDB name
+            return "sampleDB".replace(".", "_");
+        }
+    }
+}
+
 EOL
 
 # Create tasks.json file
-echo "Creating tasks.json file..."
+echo "Creating vscode/tasks.json file..."
 cat <<EOL > .vscode/tasks.json
 {
     "version": "2.0.0",
@@ -116,24 +169,26 @@ cat <<EOL > .vscode/tasks.json
 EOL
 
 # Create launch.json file
-echo "Creating launch.json file..."
+echo "Creating vscode/launch.json file..."
 cat <<EOL > .vscode/launch.json
 {
     "version": "0.2.0",
     "configurations": [
-    {
-        "type": "node",
-        "request": "launch",
-        "name": "Launch Program",
-        "skipFiles": [
-        "<node_internals>/**"
-        ],
-        "program": "\${workspaceFolder}/dist/index.js",
-        "args": [],
-        "outFiles": [
-        "\${workspaceFolder}/**/*.js"
-        ]
-    }
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Program",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "program": "\${workspaceFolder}/dist/Index.js",
+            "args": [
+                "--arg1=TEST"
+            ],
+            "outFiles": [
+                "\${workspaceFolder}/**/*.js"
+            ]
+        }
     ]
 }
 EOL
@@ -147,8 +202,8 @@ echo "Installing RethinkDB and TypeScript modules..."
 npm install rethinkdb @types/rethinkdb
 # Create DatabaseRepository.ts file with specified content
 echo "Creating DatabaseRepository.ts file..."
-mkdir -p src/infrastructure/repositories/DatabaseRepository
-cat <<EOL > src/infrastructure/repositories/DatabaseRepository/DatabaseRepository.ts
+mkdir -p src/application/repositories/DatabaseRepository
+cat <<EOL > src/application/repositories/DatabaseRepository/DatabaseRepository.ts
 import * as r from 'rethinkdb';
 import { Schema } from './Schema';
 
@@ -160,13 +215,10 @@ export class DatabaseRepository {
     readonly port: number;
     // conn - the RethinkDB connection object (null until connected)
     private conn: r.Connection | null;
-    // databaseName - database name
-    readonly databaseName: string
     // forceDrop - Property to recreate database on every connection
     forceDrop: boolean
 
-    constructor(databaseName: string, host: string, port: number, forceDrop: boolean = false) {
-        this.databaseName = databaseName
+    constructor(host: string, port: number, forceDrop: boolean = false) {
         this.host = host;
         this.port = port;
         this.forceDrop = forceDrop
@@ -174,9 +226,9 @@ export class DatabaseRepository {
     }
 
     // connect - establishes a connection to the RethinkDB server
-    async connect() {
+    async connect(databaseName: string) {
         this.conn = await r.connect({ host: this.host, port: this.port })
-        const schema = new Schema(this.databaseName, this)
+        const schema = new Schema(databaseName, this)
         await schema.updateSchemaIfNeeded(this.forceDrop)
     }
 
@@ -286,7 +338,7 @@ export class DatabaseRepository {
     }
 
     // delete - delete an object in a table
-    async delete(databaseName: string, tableName: string, filter: r.ExpressionFunction<boolean>) {
+    async delete(databaseName: string, tableName: string, filter: any) {
         if (this.conn === null) {
             throw new Error('Connection is null');
         }
@@ -329,62 +381,128 @@ export class DatabaseRepository {
         }
     }
 }
-EOL
-
-# Create SampleEntity.ts file with specified content
-echo "Creating SampleEntity.ts file..."
-mkdir -p src/domain/entities
-cat <<EOL > src/domain/entities/SampleEntity.ts
-// SampleEntity - a sample entity class with a readonly property 'text'
-export class SampleEntity {
-    static Schema = {
-        name: "SampleEntity",
-        properties: {
-            text: 'text',
-        },
-    };
-    readonly text: string;
-    
-    constructor(text: string) {
-        this.text = text;
-    }
-}
 
 EOL
 
 # Create Schema.ts file with specified content
 echo "Creating Schema.ts file..."
-mkdir -p src/infrastructure/repositories/DatabaseRepository
-cat <<EOL > src/infrastructure/repositories/DatabaseRepository/Schema.ts
+cat <<EOL > src/application/repositories/DatabaseRepository/Schema.ts
 import * as r from 'rethinkdb';
 import { DatabaseRepository } from './DatabaseRepository';
-import { SampleEntity } from '../../../domain/entities/SampleEntity';
+import { SampleEntity } from '../../../application/entities/SampleEntity';
 
 // Schema - responsible for database schema migration
 export class Schema {
     databaseName: string
     private databaseRepository: DatabaseRepository
-    
+
     constructor(databaseName: string, databaseRepository: DatabaseRepository) {
         this.databaseName = databaseName
         this.databaseRepository = databaseRepository
     }
-    
+
     async updateSchemaIfNeeded(dropAllFirst: boolean = false) {
         if (dropAllFirst) {
             await this.databaseRepository.dropTableIfExists(this.databaseName, SampleEntity.Schema.name)
             await this.databaseRepository.dropDatabaseIfExists(this.databaseName)
         }
-        
+
         await this.databaseRepository.createDatabaseIfNotExists(this.databaseName)
         await this.databaseRepository.createTableIfNotExists(this.databaseName, SampleEntity.Schema.name)
     }
 }
 EOL
 
+# Create EntityFactory.ts file with specified content
+echo "Creating EntityFactory.ts file..."
+cat <<EOL > src/application/entities/EntityFactory.ts
+import { SampleEntity } from "./SampleEntity";
+
+export class EntityFactory {
+    static createSampleEntity(object: any): SampleEntity {
+        return new SampleEntity(object.id, object.text)
+    }
+}
+EOL
+
+# Create SampleEntity.ts file with specified content
+echo "Creating SampleEntity.ts file..."
+cat <<EOL > src/application/entities/SampleEntity.ts
+// SampleEntity - a sample entity class with a readonly property 'text'
+export class SampleEntity {
+    static Schema = {
+        name: "SampleEntity",
+        properties: {
+            id: 'id',
+            text: 'text'
+        },
+    };
+    readonly id: number
+    readonly text: string
+
+    constructor(id: number, text: string) {
+        this.id = id
+        this.text = text
+    }
+}
+
+EOL
+
+# Create Repository.ts file with specified content
+echo "Creating Repository.ts file..."
+cat <<EOL > src/application/interfaces/Repository.ts
+// Repository - Generic Repository type
+export type Repository<T> = {
+    insert(entity: T): void;
+    getAll(): Promise<T[]>
+    update(entity: T, newData: Partial<T>): void;
+    delete(entity: T): void;
+};
+EOL
+
+# Create SampleEntityRepository.ts file with specified content
+echo "Creating SampleEntityRepository.ts file..."
+cat <<EOL > src/application/repositories/SampleEntityRepository.ts
+import { EntityFactory } from "../entities/EntityFactory";
+import { SampleEntity } from "../entities/SampleEntity";
+import { Repository } from "../interfaces/Repository";
+import { DatabaseRepository } from "./DatabaseRepository/DatabaseRepository";
+
+// SampleEntityRepository - Repository class for SampleEntity
+export class SampleEntityRepository implements Repository<SampleEntity> {
+    private databaseRepository: DatabaseRepository
+    private databaseName: string
+
+    constructor(databaseRepository: DatabaseRepository, databaseName: string) {
+        this.databaseRepository = databaseRepository
+        this.databaseName = databaseName
+    }
+
+    async insert(entity: SampleEntity) {
+        await this.databaseRepository.insert(this.databaseName, SampleEntity.Schema.name, entity)
+    }
+
+    async getAll(): Promise<SampleEntity[]> {
+        const result = (await this.databaseRepository.query(this.databaseName, SampleEntity.Schema.name, function (table) { return table }))
+        const rawResult = await result.toArray()
+        const sampleEntities = rawResult.map((object: any) => { return EntityFactory.createSampleEntity(object) })
+        result.close()
+        return sampleEntities
+    }
+
+    async update(entity: SampleEntity) {
+        await this.databaseRepository.insert(this.databaseName, SampleEntity.Schema.name, entity)
+    }
+
+    async delete(entity: SampleEntity) {
+        await this.databaseRepository.delete(this.databaseName, SampleEntity.Schema.name, { id: entity.id })
+    }
+}
+EOL
+
 # Append properties to Constants.ts file
 echo "Appending properties to Constants.ts file..."
-cat <<EOL >> src/application/Constants.ts
+cat <<EOL >> src/config/Constants.ts
 // DatabaseHost - the hostname of the RethinkDB server
 export const DatabaseHost = '192.168.1.1';
 // DatabasePort - the port number of the RethinkDB server
@@ -393,8 +511,99 @@ export const DatabasePort = 28015;
 export const DatabaseForceDrop = false;
 EOL
 
+# Create Repository.ts file with specified content
+echo "Creating Repository.ts file..."
+cat <<EOL > src/application/interfaces/Repository.ts
+// Repository - Generic Repository type
+export type Repository<T> = {
+    insert(entity: T): void;
+    getAll(): Promise<T[]>
+    update(entity: T, newData: Partial<T>): void;
+    delete(entity: T): void;
+};
+EOL
+
+# Create Index.ts file with specified content
+echo "Creating Index.ts file..."
+cat <<EOL > src/Index.ts
+// Importing CLIConfiguration class for handling Command Line Interface (CLI) arguments
+import { CLIConfiguration } from "./config/CLIConfiguration";
+
+// Extracting command line arguments
+const args = process.argv;
+
+// Creating CLIConfiguration object from the extracted CLI arguments
+export const configuration: CLIConfiguration = CLIConfiguration.fromCommandLineArguments(args);
+
+// Logging the configuration details
+console.log("Application started with configuration: " + configuration.arg1 + ", environment: " + configuration.env);
+
+// Importing necessary modules and classes for database integration
+import { DatabaseRepository } from "./application/repositories/DatabaseRepository/DatabaseRepository";
+import { DatabaseHost, DatabasePort } from "./config/Constants";
+import { SampleEntityRepository } from "./application/repositories/SampleEntityRepository";
+import { SampleEntity } from "./application/entities/SampleEntity";
+
+// Asynchronous function for database operations
+(async () => {
+    // Database connection details
+    const databaseName = "TralalaTestowaBaza";
+
+    // Creating DatabaseRepository instance for database connection
+    const databaseRepository = new DatabaseRepository(DatabaseHost, DatabasePort, true);
+
+    // Establishing connection to the specified database
+    await databaseRepository.connect(databaseName);
+
+    // Creating SampleEntityRepository instance for database operations
+    const sampleEntityRepository = new SampleEntityRepository(databaseRepository, databaseName);
+
+    // Creating sample entities for insertion
+    const firstEntry = new SampleEntity(1, "jeden");
+    const secondEntry = new SampleEntity(2, "dwa");
+
+    // Inserting the first entity into the database
+    await sampleEntityRepository.insert(firstEntry);
+
+    // Retrieving all sample entities from the database for validation
+    const allSampleEntities = await sampleEntityRepository.getAll();
+    console.log("All sample entities after insertion: ", allSampleEntities);
+
+    // Updating the first entity in the database
+    const updatedFirstEntry = new SampleEntity(firstEntry.id, "Jeden after updated");
+    await sampleEntityRepository.update(updatedFirstEntry);
+
+    // Retrieving all sample entities after update for validation
+    const allSampleEntitiesAfterUpdate = await sampleEntityRepository.getAll();
+    console.log("All sample entities after update: ", allSampleEntitiesAfterUpdate);
+
+    // Deleting the first entity from the database
+    await sampleEntityRepository.delete(firstEntry);
+
+    // Retrieving all sample entities after deletion for validation
+    const allSampleEntitiesAfterDelete = await sampleEntityRepository.getAll();
+    console.log("All sample entities after deletion: ", allSampleEntitiesAfterDelete);
+})();
+EOL
+
 echo "RethinkDB and TypeScript modules installed. DatabaseRepository.ts created."
 else
+# Create Index.ts file with specified content
+echo "Creating Index.ts file..."
+cat <<EOL > src/Index.ts
+// Importing CLIConfiguration class for handling Command Line Interface (CLI) arguments
+import { CLIConfiguration } from "./config/CLIConfiguration";
+
+// Extracting command line arguments
+const args = process.argv;
+
+// Creating CLIConfiguration object from the extracted CLI arguments
+export const configuration: CLIConfiguration = CLIConfiguration.fromCommandLineArguments(args);
+
+// Logging the configuration details
+console.log("Application started with configuration: " + configuration.arg1 + ", environment: " + configuration.env);
+EOL
+
 echo "Skipping RethinkDB and TypeScript installation."
 fi
 

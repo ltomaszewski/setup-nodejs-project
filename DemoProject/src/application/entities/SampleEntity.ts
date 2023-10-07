@@ -3,13 +3,16 @@ export class SampleEntity {
     static Schema = {
         name: "SampleEntity",
         properties: {
-            text: 'text',
+            id: 'id',
+            text: 'text'
         },
     };
-    readonly text: string;
-    
-    constructor(text: string) {
-        this.text = text;
+    readonly id: number
+    readonly text: string
+
+    constructor(id: number, text: string) {
+        this.id = id
+        this.text = text
     }
 }
 
