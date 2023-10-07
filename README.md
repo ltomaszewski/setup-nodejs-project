@@ -29,3 +29,33 @@ This Bash script automates the setup process for a new Node.js project with Type
 - Initializes a new Node.js project with TypeScript configuration.
 - Organizes the project with a predefined directory structure.
 - (Optional) Asks if you want to install RethinkDB and integrates it into the project.
+
+## Created File Tree
+DemoProject/
+├── .gitignore
+├── .vscode/
+│   ├── launch.json
+│   └── tasks.json
+├── dist/
+├── node_modules/
+├── src/
+│   ├── application/
+│   │   ├── dtos/
+│   │   ├── entities/
+│   │   ├── helpers/
+│   │   ├── interfaces/
+│   │   ├── repositories/
+│   │   └── services/
+│   ├── config/
+│   │   ├── CLIConfiguration.ts
+│   │   └── Constants.ts
+│   ├── error-handling/
+│   └── interfaces/
+│       ├── controllers/
+│       └── middlewares/
+├── .git/
+├── package.json
+└── tsconfig.json
+
+
+
