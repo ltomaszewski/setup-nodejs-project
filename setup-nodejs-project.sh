@@ -162,6 +162,9 @@ cat <<EOL > .vscode/tasks.json
             "kind": "build",
             "isDefault": true
         },
+        "runOptions": {
+            "runOn": "folderOpen",
+        },
         "label": "tsc: watch - tsconfig.json"
     }
     ]
