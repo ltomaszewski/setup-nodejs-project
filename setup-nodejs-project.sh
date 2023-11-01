@@ -190,6 +190,10 @@ cat <<EOL > .vscode/launch.json
             ],
             "outFiles": [
                 "\${workspaceFolder}/**/*.js"
+            ],
+            "resolveSourceMapLocations": [
+                "${workspaceFolder}/**",
+                "!**/node_modules/**"
             ]
         }
     ]

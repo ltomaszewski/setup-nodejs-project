@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@types/rethinkdb": "^2.3.18",
+    "@types/rethinkdb": "^2.3.19",
     "rethinkdb": "^2.4.2"
   }
 }
