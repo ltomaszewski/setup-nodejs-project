@@ -53,6 +53,8 @@ tsc --init --target ESNext --module CommonJS --outDir ./dist --rootDir ./src --e
 npm i --save-dev @types/node
 npm i --save dotenv
 npm i --save-dev @types/dotenv
+npm i --save ws
+npm i --save-dev @types/ws
 
 echo "Installing MongoDB and TypeScript modules..."
 npm install mongodb
@@ -85,11 +87,163 @@ mkdir -p src/application/helpers
 mkdir -p src/application/interfaces
 mkdir -p src/application/services
 mkdir -p src/application/repositories
+mkdir -p src/application/tools
 mkdir -p src/config
 mkdir -p src/error-handling
 mkdir -p src/interfaces/controllers
 mkdir -p src/interfaces/middlewares
 mkdir -p src/interfaces/routes
+
+# Create EasyWebSocketClientErrorWithMessage.ts file with specified content
+echo "Creating EasyWebSocketClientErrorWithMessage.ts file..."
+cat <<'EOL' > src/application/tools/EasyWebSocketClientErrorWithMessage.ts
+export enum EasyWebSocketClientError {
+    ReconnectFailed = "ReconnectFailed",
+    MaxReconnectAttemptsReached = "MaxReconnectAttemptsReached",
+    ConnectionTimeout = "ConnectionTimeout"
+}
+
+// Custom error type that includes a ConnectionError
+export class EasyWebSocketClientErrorWithMessage extends Error {
+    public connectionError?: EasyWebSocketClientError;
+
+    constructor(message: string, connectionError?: EasyWebSocketClientError) {
+        super(message);
+        this.connectionError = connectionError;
+    }
+}
+EOL
+
+# Create EasyWebSocketClient.ts file with specified content
+echo "Creating EasyWebSocketClient.ts file..."
+cat <<'EOL' > src/application/tools/EasyWebSocketClient.ts
+import WebSocket from 'ws';
+import { EasyWebSocketClientError, EasyWebSocketClientErrorWithMessage } from './EasyWebSocketClientErrorWithMessage.js';
+
+export class EasyWebSocketClient {
+    public isConnected: boolean = false;
+    private ws: WebSocket;
+    private url: string;
+    private token: string;
+    private reconnectAttempts: number = 0;
+    private maxReconnectAttempts: number = 3;
+    private messageQueue: any[] = []; // Queue for storing messages when reconnecting
+    private isReconnecting: boolean = false;
+    private onMessageHandler: (data: any) => void;
+    private onErrorHandler: (error: EasyWebSocketClientErrorWithMessage) => void;
+
+    constructor(url: string,
+        token: string,
+        onMessageHandler: (data: any) => void,
+        onErrorHandler: (error: Error) => void,
+        verbose: boolean = false) {
+        this.url = url;
+        this.token = token;
+        this.onMessageHandler = onMessageHandler;
+        this.onErrorHandler = onErrorHandler;
+        this.ws = new WebSocket(this.url, { headers: { token: this.token } });
+    }
+
+    public async connect(): Promise<boolean> {
+        return new Promise<boolean>((resolve, reject) => {
+            this.ws = new WebSocket(this.url, { headers: { token: this.token } });
+
+            const connectionTimeout = setTimeout(() => {
+                if (this.ws.readyState !== WebSocket.OPEN) {
+                    reject(new EasyWebSocketClientErrorWithMessage("Connection timeout", EasyWebSocketClientError.ConnectionTimeout));
+                }
+            }, 5000); // 5-second timeout
+
+            this.ws.on('open', () => {
+                console.log("Connected to the server");
+                this.isConnected = true; // Update connection status
+                this.isReconnecting = false;
+                this.processMessageQueue();
+                clearTimeout(connectionTimeout);
+                resolve(true);
+            });
+
+            this.ws.on('error', (error) => {
+                console.error("WebSocket error:", error);
+                clearTimeout(connectionTimeout);
+                this.onErrorHandler(error);
+                reject(error);
+            });
+
+            this.ws.on('ping', () => {
+                this.handlePing();
+            });
+
+            this.setupWebSocket();
+        });
+    }
+
+    private handlePing() {
+        console.log("Ping received from the server, sending pong");
+        this.ws.pong(); // Respond with pong
+    }
+
+    private setupWebSocket() {
+        this.ws.on('message', (data) => {
+            this.onMessageHandler(data.toString());
+        });
+
+        this.ws.on('close', () => {
+            console.log("Connection closed");
+            this.handleReconnect();
+        });
+
+        this.ws.on('pong', () => {
+            console.log("Pong received from the server");
+        });
+    }
+
+    private processMessageQueue() {
+        while (this.messageQueue.length > 0) {
+            const message = this.messageQueue.shift();
+            this.sendMessage(message);
+        }
+    }
+
+    public sendMessage(message: any) {
+        if (this.ws.readyState === WebSocket.OPEN) {
+            const json = JSON.stringify(message);
+            this.ws.send(json);
+        } else {
+            console.error("WebSocket is not open. Queuing message.");
+            this.messageQueue.push(message);
+        }
+    }
+
+    private handleReconnect() {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.isReconnecting = true;
+            setTimeout(() => {
+                console.log(`Attempting to reconnect... (Attempt ${this.reconnectAttempts + 1})`);
+                this.reconnectAttempts++;
+                this.connect();
+            }, this.reconnectAttempts * 1000); // Backoff strategy: 1, 2, 3 seconds
+        } else {
+            console.error("Maximum reconnect attempts reached. Unable to connect to the server.");
+            this.isReconnecting = false;
+            this.isConnected = false; // Update connection status
+            this.notifyReconnectionFailure();
+            this.onErrorHandler(new EasyWebSocketClientErrorWithMessage("Maximum reconnect attempts reached.", EasyWebSocketClientError.MaxReconnectAttemptsReached));
+        }
+    }
+
+    private notifyReconnectionFailure() {
+        // Notify the user about reconnection failure
+        // This could be an event emission or callback
+        console.error("Failed to reconnect. Notify user here.");
+        this.onErrorHandler(new EasyWebSocketClientErrorWithMessage("Failed to reconnect.", EasyWebSocketClientError.ReconnectFailed));
+    }
+
+    public closeConnection() {
+        this.ws.close();
+    }
+}
+EOL
 
 # Create Constants.ts file
 echo "Creating Constants.ts file..."
